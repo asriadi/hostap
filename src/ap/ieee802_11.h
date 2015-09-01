@@ -104,4 +104,6 @@ static inline void sae_clear_retransmit_timer(struct hostapd_data *hapd,
 }
 #endif /* CONFIG_SAE */
 
+u8 * hostapd_eid_fils_indic(struct hostapd_data *hapd, u8 *eid);
+
 #endif /* IEEE802_11_H */

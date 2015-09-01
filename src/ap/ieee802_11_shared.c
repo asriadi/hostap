@@ -506,3 +506,35 @@ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid)
 
 	return pos;
 }
+
+
+u8 * hostapd_eid_fils_indic(struct hostapd_data *hapd, u8 *eid)
+{
+	u8 *pos = eid;
+#ifdef CONFIG_FILS
+	u8 *len;
+	u16 fils_info = 0;
+
+	if (!(hapd->conf->wpa & WPA_PROTO_RSN) ||
+	    !wpa_key_mgmt_fils(hapd->conf->wpa_key_mgmt))
+		return pos;
+
+	*pos++ = WLAN_EID_FILS_INDICATION;
+	len = pos++;
+	/* TODO: B0..B2: Number of Public Key Identifiers */
+	/* TODO: B3..B5: Number of Domain Identifiers */
+	/* TODO: B6: FILS IP Address Configuration */
+	if (hapd->conf->fils_cache_id_set)
+		fils_info |= BIT(7);
+	/* B8..B15: Reserved */
+	WPA_PUT_LE16(pos, fils_info);
+	pos += 2;
+	if (hapd->conf->fils_cache_id_set) {
+		os_memcpy(pos, hapd->conf->fils_cache_id, FILS_CACHE_ID_LEN);
+		pos += FILS_CACHE_ID_LEN;
+	}
+	*len = pos - len - 1;
+#endif /* CONFIG_FILS */
+
+	return pos;
+}

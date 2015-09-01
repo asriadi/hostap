@@ -467,6 +467,11 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 		pos = hostapd_eid_vht_capabilities(hapd, pos);
 		pos = hostapd_eid_vht_operation(hapd, pos);
 	}
+#endif /* CONFIG_IEEE80211AC */
+
+	pos = hostapd_eid_fils_indic(hapd, pos);
+
+#ifdef CONFIG_IEEE80211AC
 	if (hapd->conf->vendor_vht)
 		pos = hostapd_eid_vendor_vht(hapd, pos);
 #endif /* CONFIG_IEEE80211AC */
@@ -1036,6 +1041,11 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 		tailpos = hostapd_eid_vht_capabilities(hapd, tailpos);
 		tailpos = hostapd_eid_vht_operation(hapd, tailpos);
 	}
+#endif /* CONFIG_IEEE80211AC */
+
+	tailpos = hostapd_eid_fils_indic(hapd, tailpos);
+
+#ifdef CONFIG_IEEE80211AC
 	if (hapd->conf->vendor_vht)
 		tailpos = hostapd_eid_vendor_vht(hapd, tailpos);
 #endif /* CONFIG_IEEE80211AC */
