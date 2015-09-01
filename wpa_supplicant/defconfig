@@ -507,3 +507,9 @@ CONFIG_PEERKEY=y
 
 # OS X builds. This is only for building eapol_test.
 #CONFIG_OSX=y
+
+# Fast Initial Link Setup (FILS) (IEEE 802.11ai)
+# Note: This is experimental and not complete implementation. This should not be
+# enabled for production use yet since the P802.11ai is still a draft and
+# subject to change.
+#CONFIG_FILS=y
