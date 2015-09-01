@@ -329,3 +329,9 @@ CONFIG_IPV6=y
 # http://wireless.kernel.org/en/users/Documentation/acs
 #
 #CONFIG_ACS=y
+
+# Fast Initial Link Setup (FILS) (IEEE 802.11ai)
+# Note: This is experimental and not complete implementation. This should not be
+# enabled for production use yet since the P802.11ai is still a draft and
+# subject to change.
+#CONFIG_FILS=y

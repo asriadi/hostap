@@ -557,6 +557,11 @@ struct hostapd_bss_config {
 
 	char *no_probe_resp_if_seen_on;
 	char *no_auth_if_seen_on;
+
+#ifdef CONFIG_FILS
+	u8 fils_cache_id[FILS_CACHE_ID_LEN];
+	int fils_cache_id_set;
+#endif /* CONFIG_FILS */
 };
 
 
