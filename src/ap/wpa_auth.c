@@ -36,6 +36,10 @@ static void wpa_send_eapol_timeout(void *eloop_ctx, void *timeout_ctx);
 static int wpa_sm_step(struct wpa_state_machine *sm);
 static int wpa_verify_key_mic(int akmp, struct wpa_ptk *PTK, u8 *data,
 			      size_t data_len);
+#ifdef CONFIG_FILS
+static int wpa_aead_decrypt(struct wpa_state_machine *sm, struct wpa_ptk *ptk,
+			    u8 *buf, size_t buf_len);
+#endif /* CONFIG_FILS */
 static void wpa_sm_call_step(void *eloop_ctx, void *timeout_ctx);
 static void wpa_group_sm_step(struct wpa_authenticator *wpa_auth,
 			      struct wpa_group *group);
@@ -1215,6 +1219,14 @@ continue_processing:
 					"received EAPOL-Key with invalid MIC");
 			return;
 		}
+#ifdef CONFIG_FILS
+		if (!mic_len &&
+		    wpa_aead_decrypt(sm, &sm->PTK, data, data_len) < 0) {
+			wpa_auth_logger(wpa_auth, sm->addr, LOGGER_INFO,
+					"received EAPOL-Key with invalid MIC");
+			return;
+		}
+#endif /* CONFIG_FILS */
 		sm->MICVerified = TRUE;
 		eloop_cancel_timeout(wpa_send_eapol_timeout, wpa_auth, sm);
 		sm->pending_1_of_4_timeout = 0;
@@ -2003,7 +2015,8 @@ static int wpa_derive_ptk(struct wpa_state_machine *sm, const u8 *snonce,
 
 
 #ifdef CONFIG_FILS
-static int wpa_aead_decrypt(struct wpa_state_machine *sm, struct wpa_ptk *ptk)
+static int wpa_aead_decrypt(struct wpa_state_machine *sm, struct wpa_ptk *ptk,
+			    u8 *buf, size_t buf_len)
 {
 	struct ieee802_1x_hdr *hdr;
 	struct wpa_eapol_key *key;
@@ -2017,11 +2030,11 @@ static int wpa_aead_decrypt(struct wpa_state_machine *sm, struct wpa_ptk *ptk)
 	 * wpa_receive(), but we need to verify that there is enough room for
 	 * the AES-GCM Tag after the Key Data field.
 	 */
-	hdr = (struct ieee802_1x_hdr *) sm->last_rx_eapol_key;
+	hdr = (struct ieee802_1x_hdr *) buf;
 	key = (struct wpa_eapol_key *) (hdr + 1);
 	pos = (u8 *) (key + 1);
 	key_data_len = WPA_GET_BE16(pos);
-	if (sm->last_rx_eapol_key_len < sizeof(struct ieee802_1x_hdr) +
+	if (buf_len < sizeof(struct ieee802_1x_hdr) +
 	    sizeof(struct wpa_eapol_key) + key_data_len + AES_BLOCK_SIZE) {
 		wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_INFO,
 				"No room for AES-GCM Tag in the frame");
@@ -2035,8 +2048,11 @@ static int wpa_aead_decrypt(struct wpa_state_machine *sm, struct wpa_ptk *ptk)
 		high = WPA_GET_BE64(&key->key_iv[0]);
 		counter = WPA_GET_BE64(&key->key_iv[8]);
 		if (high || counter <= ptk->sta_aead_counter) {
-			wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_INFO,
-					"AEAD counter did not increase");
+			wpa_printf(MSG_INFO,
+				   "AEAD counter did not increase (high=0x%llx low=0x%08llx last_used=0x%08llx)",
+				   (unsigned long long) high,
+				   (unsigned long long) counter,
+				   (unsigned long long) ptk->sta_aead_counter);
 			return -1;
 		}
 	}
@@ -2048,8 +2064,7 @@ static int wpa_aead_decrypt(struct wpa_state_machine *sm, struct wpa_ptk *ptk)
 		return -1;
 
 	if (aes_gcm_ad(ptk->kek, ptk->kek_len, nonce, sizeof(nonce),
-		       pos, key_data_len,
-		       sm->last_rx_eapol_key, pos - sm->last_rx_eapol_key,
+		       pos, key_data_len, buf, pos - buf,
 		       pos + key_data_len, tmp) < 0) {
 		wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_INFO,
 				"Invalid AES-GCM Tag in the frame");
@@ -2117,7 +2132,9 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 		}
 
 #ifdef CONFIG_FILS
-		if (!mic_len && wpa_aead_decrypt(sm, &PTK) == 0) {
+		if (!mic_len &&
+		    wpa_aead_decrypt(sm, &PTK, sm->last_rx_eapol_key,
+				     sm->last_rx_eapol_key_len) == 0) {
 			ok = 1;
 			break;
 		}
