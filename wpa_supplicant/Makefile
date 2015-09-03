@@ -249,6 +249,7 @@ ifdef CONFIG_FILS
 CFLAGS += -DCONFIG_FILS
 NEED_CRC32=y
 NEED_SHA384=y
+NEED_AES_GCM=y
 endif
 
 ifdef CONFIG_WNM
@@ -1196,6 +1197,9 @@ endif
 endif
 ifdef NEED_AES_SIV
 AESOBJS += ../src/crypto/aes-siv.o
+endif
+ifdef NEED_AES_GCM
+AESOBJS += ../src/crypto/aes-gcm.o
 endif
 ifdef NEED_AES_WRAP
 NEED_AES_ENC=y

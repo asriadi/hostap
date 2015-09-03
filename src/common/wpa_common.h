@@ -202,6 +202,9 @@ struct wpa_ptk {
 	size_t kck_len;
 	size_t kek_len;
 	size_t tk_len;
+	u64 ap_aead_counter;
+	u64 sta_aead_counter;
+	unsigned int peer_aead_counter_used:1;
 };
 
 
