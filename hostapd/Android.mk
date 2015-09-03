@@ -253,6 +253,7 @@ ifdef CONFIG_FILS
 L_CFLAGS += -DCONFIG_FILS
 NEED_CRC32=y
 NEED_SHA384=y
+NEED_AES_GCM=y
 endif
 
 ifdef CONFIG_WNM
@@ -725,6 +726,9 @@ NEED_AES_DEC=y
 ifneq ($(CONFIG_TLS), openssl)
 AESOBJS += src/crypto/aes-cbc.c
 endif
+endif
+ifdef NEED_AES_CBC
+AESOBJS += src/crypto/aes-gcm.c
 endif
 ifdef NEED_AES_DEC
 ifdef CONFIG_INTERNAL_AES
