@@ -508,6 +508,28 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 	}
 #endif /* CONFIG_SAE */
 
+#ifdef CONFIG_FILS
+	/* TODO: FILS operations can in some cases be done between different
+	 * network_ctx (i.e., same credentials can be used with multiple
+	 * networks). */
+	/* TODO: FILS+SK if ERP data is available */
+	if (params.auth_alg == WPA_AUTH_ALG_OPEN &&
+	    wpa_key_mgmt_fils(ssid->key_mgmt) &&
+	    pmksa_cache_set_current(wpa_s->wpa, NULL, bss->bssid,
+				    ssid, 0) == 0) {
+		wpa_printf(MSG_DEBUG,
+			   "SME: Try to use FILS with PMKSA caching");
+		resp = fils_build_auth(wpa_s->wpa);
+		if (!resp) {
+			wpas_connection_failed(wpa_s, bss->bssid);
+			return;
+		}
+		params.auth_alg = WPA_AUTH_ALG_FILS;
+		params.sae_data = wpabuf_head(resp);
+		params.sae_data_len = wpabuf_len(resp);
+	}
+#endif /* CONFIG_FILS */
+
 	wpa_supplicant_cancel_sched_scan(wpa_s);
 	wpa_supplicant_cancel_scan(wpa_s);
 

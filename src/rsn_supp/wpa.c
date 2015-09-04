@@ -3142,3 +3142,84 @@ void wpa_sm_set_ptk_kck_kek(struct wpa_sm *sm,
 	}
 	sm->ptk_set = 1;
 }
+
+
+#ifdef CONFIG_FILS
+
+struct wpabuf * fils_build_auth(struct wpa_sm *sm)
+{
+	struct wpabuf *buf;
+
+	if (!sm->assoc_wpa_ie) {
+		wpa_printf(MSG_INFO, "RSN: No own RSN IE set for FILS");
+		return NULL;
+	}
+
+	if (random_get_bytes(sm->fils_nonce, FILS_NONCE_LEN) ||
+	    random_get_bytes(sm->fils_session, FILS_SESSION_LEN))
+		return NULL;
+
+	wpa_hexdump(MSG_DEBUG, "RSN: Generated FILS Nonce",
+		    sm->fils_nonce, FILS_NONCE_LEN);
+	wpa_hexdump(MSG_DEBUG, "RSN: Generated FILS Session",
+		    sm->fils_session, FILS_SESSION_LEN);
+
+	buf = wpabuf_alloc(1000 + sm->assoc_wpa_ie_len);
+	if (!buf)
+		return NULL;
+
+	/* Fields following the Authentication algorithm number field */
+
+	/* Authentication Transaction seq# */
+	wpabuf_put_le16(buf, 1);
+
+	/* Status Code */
+	wpabuf_put_le16(buf, WLAN_STATUS_SUCCESS);
+
+	/* RSNE */
+	/* TODO: If P802.11ai continues to use the unneeded PMKID List element
+	 * instead of RSNE PMKID List subfield, the RSNE here should likely be
+	 * modified by removing the PMKID entry when using PMKSA caching.
+	 */
+	wpabuf_put_data(buf, sm->assoc_wpa_ie, sm->assoc_wpa_ie_len);
+
+	/* TODO: MDE when using FILS+FT */
+	/* TODO: FTE when using FILS+FT */
+
+	/* TODO: Finite Cyclic Group when using PK or PFS */
+	/* TODO: Element when using PK or PFS */
+
+	/* FILS Authentication Type */
+	/* TODO: FILS SK with PFS */
+	/* TODO: FILS PK */
+	wpabuf_put_u8(buf, FILS_AUTH_SHARED_KEY);
+
+	/* FILS Nonce */
+	wpabuf_put_data(buf, sm->fils_nonce, FILS_NONCE_LEN);
+
+	/* PMKID List */
+	if (sm->cur_pmksa) {
+		wpabuf_put_u8(buf, WLAN_EID_EXTENSION); /* Element ID */
+		wpabuf_put_u8(buf, 1 + 1 + PMKID_LEN); /* Length */
+		/* Element ID Extension */
+		wpabuf_put_u8(buf, WLAN_EID_EXT_PMKID_LIST);
+		wpabuf_put_u8(buf, 1); /* PMKID Count */
+		wpabuf_put_data(buf, sm->cur_pmksa->pmkid, PMKID_LEN);
+	}
+
+	/* FILS Session */
+	wpabuf_put_u8(buf, WLAN_EID_EXTENSION); /* Element ID */
+	wpabuf_put_u8(buf, 1 + FILS_SESSION_LEN); /* Length */
+	/* Element ID Extension */
+	wpabuf_put_u8(buf, WLAN_EID_EXT_FILS_SESSION);
+	wpabuf_put_data(buf, sm->fils_session, FILS_SESSION_LEN);
+
+	/* TODO: FILS Wrapped Data (if ERP info available) */
+
+	wpa_hexdump_buf(MSG_DEBUG, "RSN: FILS fields for Authentication frame",
+			buf);
+
+	return buf;
+}
+
+#endif /* CONFIG_FILS */

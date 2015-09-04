@@ -133,6 +133,11 @@ struct wpa_sm {
 #ifdef CONFIG_P2P
 	u8 p2p_ip_addr[3 * 4];
 #endif /* CONFIG_P2P */
+
+#ifdef CONFIG_FILS
+	u8 fils_nonce[FILS_NONCE_LEN];
+	u8 fils_session[FILS_SESSION_LEN];
+#endif /* CONFIG_FILS */
 };
 
 
