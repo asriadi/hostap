@@ -1557,8 +1557,10 @@ enum nl80211_commands {
  *	the connection request from a station. nl80211_connect_failed_reason
  *	enum has different reasons of connection failure.
  *
- * @NL80211_ATTR_SAE_DATA: SAE elements in Authentication frames. This starts
- *	with the Authentication transaction sequence number field.
+ * @NL80211_ATTR_AUTH_DATA: Fields and elements in Authentication frames. This
+ *	starts with the Authentication transaction sequence number field and is
+ *	used with authentication algorithms that need special fields to be added
+ *	into the frames (SAE and FILS).
  *
  * @NL80211_ATTR_VHT_CAPABILITY: VHT Capability information element (from
  *	association request when used with NL80211_CMD_NEW_STATION)
@@ -2019,7 +2021,7 @@ enum nl80211_attrs {
 
 	NL80211_ATTR_CONN_FAILED_REASON,
 
-	NL80211_ATTR_SAE_DATA,
+	NL80211_ATTR_AUTH_DATA,
 
 	NL80211_ATTR_VHT_CAPABILITY,
 
@@ -2141,6 +2143,7 @@ enum nl80211_attrs {
 #define NL80211_ATTR_SCAN_GENERATION NL80211_ATTR_GENERATION
 #define	NL80211_ATTR_MESH_PARAMS NL80211_ATTR_MESH_CONFIG
 #define NL80211_ATTR_IFACE_SOCKET_OWNER NL80211_ATTR_SOCKET_OWNER
+#define NL80211_ATTR_SAE_DATA NL80211_ATTR_AUTH_DATA
 
 /*
  * Allow user space programs to use #ifdef on new attributes by defining them
@@ -3415,6 +3418,7 @@ enum nl80211_bss_status {
  * @NL80211_AUTHTYPE_FT: Fast BSS Transition (IEEE 802.11r)
  * @NL80211_AUTHTYPE_NETWORK_EAP: Network EAP (some Cisco APs and mainly LEAP)
  * @NL80211_AUTHTYPE_SAE: Simultaneous authentication of equals
+ * @NL80211_AUTHTYPE_FILS: Fast Initial Link Setup
  * @__NL80211_AUTHTYPE_NUM: internal
  * @NL80211_AUTHTYPE_MAX: maximum valid auth algorithm
  * @NL80211_AUTHTYPE_AUTOMATIC: determine automatically (if necessary by
@@ -3427,6 +3431,7 @@ enum nl80211_auth_type {
 	NL80211_AUTHTYPE_FT,
 	NL80211_AUTHTYPE_NETWORK_EAP,
 	NL80211_AUTHTYPE_SAE,
+	NL80211_AUTHTYPE_FILS,
 
 	/* keep last */
 	__NL80211_AUTHTYPE_NUM,
@@ -4358,12 +4363,15 @@ enum nl80211_feature_flags {
 /**
  * enum nl80211_ext_feature_index - bit index of extended features.
  * @NL80211_EXT_FEATURE_VHT_IBSS: This driver supports IBSS with VHT datarates.
+ * @NL80211_EXT_FEATURE_FILS: This driver supports Fast Initial Link Setup with
+ *	user space SME (NL80211_CMD_AUTHENTICATE) in station mode.
  *
  * @NUM_NL80211_EXT_FEATURES: number of extended features.
  * @MAX_NL80211_EXT_FEATURES: highest extended feature index.
  */
 enum nl80211_ext_feature_index {
 	NL80211_EXT_FEATURE_VHT_IBSS,
+	NL80211_EXT_FEATURE_FILS,
 
 	/* add new features before the definition below */
 	NUM_NL80211_EXT_FEATURES,
