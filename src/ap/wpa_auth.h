@@ -288,6 +288,9 @@ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			   const u8 *pmk);
 void wpa_auth_pmksa_remove(struct wpa_authenticator *wpa_auth,
 			   const u8 *sta_addr);
+struct rsn_pmksa_cache_entry *
+wpa_auth_pmksa_get(struct wpa_authenticator *wpa_auth, const u8 *sta_addr,
+		   const u8 *pmkid);
 int wpa_auth_sta_set_vlan(struct wpa_state_machine *sm, int vlan_id);
 void wpa_auth_eapol_key_tx_status(struct wpa_authenticator *wpa_auth,
 				  struct wpa_state_machine *sm, int ack);
