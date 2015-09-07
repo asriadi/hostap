@@ -227,6 +227,64 @@ int wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
 	return 0;
 }
 
+#ifdef CONFIG_FILS
+int fils_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const u8 *spa, const u8 *aa,
+		    const u8 *snonce, const u8 *anonce, struct wpa_ptk *ptk,
+		    int akmp, int cipher)
+{
+	u8 data[2 * ETH_ALEN + 2 * FILS_NONCE_LEN];
+	u8 tmp[WPA_KCK_MAX_LEN + WPA_KEK_MAX_LEN + WPA_TK_MAX_LEN];
+	size_t ptk_len;
+	const char *label = "FILS PTK Derivation";
+
+	/* KCK || KEK || TK [ || FILS-FT ] =
+	 * KDF-X(PMK, "FILS PTK Derivation", SPA || AA || SNonce || ANonce)
+	 */
+	os_memcpy(data, spa, ETH_ALEN);
+	os_memcpy(data + ETH_ALEN, aa, ETH_ALEN);
+	os_memcpy(data + 2 * ETH_ALEN, snonce, FILS_NONCE_LEN);
+	os_memcpy(data + 2 * ETH_ALEN + FILS_NONCE_LEN, anonce, FILS_NONCE_LEN);
+
+	ptk->sta_aead_counter = 0;
+	ptk->ap_aead_counter = 0;
+	ptk->kck_len = wpa_kck_len(akmp);
+	ptk->kek_len = wpa_kek_len(akmp);
+	ptk->tk_len = wpa_cipher_key_len(cipher);
+	ptk_len = ptk->kck_len + ptk->kek_len + ptk->tk_len;
+
+	if (wpa_key_mgmt_sha384(akmp))
+		sha384_prf(pmk, pmk_len, label, data, sizeof(data),
+			   tmp, ptk_len);
+	else if (wpa_key_mgmt_sha256(akmp))
+		sha256_prf(pmk, pmk_len, label, data, sizeof(data),
+			   tmp, ptk_len);
+	else
+		return -1;
+
+	wpa_printf(MSG_DEBUG, "FILS: PTK derivation - SPA=" MACSTR
+		   " AA=" MACSTR, MAC2STR(spa), MAC2STR(aa));
+	wpa_hexdump(MSG_DEBUG, "FILS: SNonce", snonce, FILS_NONCE_LEN);
+	wpa_hexdump(MSG_DEBUG, "FILS: ANonce", anonce, FILS_NONCE_LEN);
+	wpa_hexdump_key(MSG_DEBUG, "FILS: PMK", pmk, pmk_len);
+	wpa_hexdump_key(MSG_DEBUG, "FILS: PTK", tmp, ptk_len);
+
+	os_memcpy(ptk->kck, tmp, ptk->kck_len);
+	wpa_hexdump_key(MSG_DEBUG, "FILS: KCK", ptk->kck, ptk->kck_len);
+
+	os_memcpy(ptk->kek, tmp + ptk->kck_len, ptk->kek_len);
+	wpa_hexdump_key(MSG_DEBUG, "FILS: KEK", ptk->kek, ptk->kek_len);
+
+	os_memcpy(ptk->tk, tmp + ptk->kck_len + ptk->kek_len, ptk->tk_len);
+	wpa_hexdump_key(MSG_DEBUG, "FILS: TK", ptk->tk, ptk->tk_len);
+
+	/* TODO: FILS-FT */
+
+	os_memset(tmp, 0, sizeof(tmp));
+	return 0;
+}
+
+#endif /* CONFIG_FILS */
+
 
 #ifdef CONFIG_IEEE80211R
 int wpa_ft_mic(const u8 *kck, size_t kck_len, const u8 *sta_addr,
