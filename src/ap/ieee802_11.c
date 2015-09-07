@@ -909,7 +909,7 @@ static void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 	struct wpabuf *data = NULL;
 	const u8 *pos, *end, *rsn, *snonce, *ie;
 	size_t ielen;
-	u8 fils_nonce[FILS_NONCE_LEN]; /* TODO: move to appropriate structure */
+	u8 fils_nonce[FILS_NONCE_LEN];
 	struct ieee802_11_elems elems;
 	int res;
 	struct rsn_pmksa_cache_entry *pmksa = NULL;
@@ -1090,6 +1090,14 @@ static void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 	wpabuf_put_data(data, elems.fils_session, FILS_SESSION_LEN);
 
 	/* TODO: FILS Wrapped Data (if ERP info available) */
+
+	if (fils_auth_pmk_to_ptk(sta->wpa_sm, pmksa->pmk, pmksa->pmk_len,
+				 snonce, fils_nonce) < 0) {
+		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		wpabuf_free(data);
+		data = NULL;
+		goto fail;
+	}
 
 fail:
 	send_auth_reply(hapd, mgmt->sa, mgmt->bssid, WLAN_AUTH_FILS, 2, resp,

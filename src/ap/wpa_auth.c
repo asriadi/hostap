@@ -2017,6 +2017,22 @@ static int wpa_derive_ptk(struct wpa_state_machine *sm, const u8 *snonce,
 
 
 #ifdef CONFIG_FILS
+
+int fils_auth_pmk_to_ptk(struct wpa_state_machine *sm, const u8 *pmk,
+			 size_t pmk_len, const u8 *snonce, const u8 *anonce)
+{
+	int res;
+
+	res = fils_pmk_to_ptk(pmk, pmk_len, sm->addr, sm->wpa_auth->addr,
+			      snonce, anonce, &sm->PTK,
+			      sm->wpa_key_mgmt, sm->pairwise);
+	if (res < 0)
+		return res;
+	sm->PTK_valid = TRUE;
+	return 0;
+}
+
+
 static int wpa_aead_decrypt(struct wpa_state_machine *sm, struct wpa_ptk *ptk,
 			    u8 *buf, size_t buf_len)
 {
