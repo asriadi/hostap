@@ -137,6 +137,7 @@ struct wpa_sm {
 #ifdef CONFIG_FILS
 	u8 fils_nonce[FILS_NONCE_LEN];
 	u8 fils_session[FILS_SESSION_LEN];
+	u8 fils_anonce[FILS_NONCE_LEN];
 #endif /* CONFIG_FILS */
 };
 

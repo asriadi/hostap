@@ -14,6 +14,7 @@
 #include "crypto/crypto.h"
 #include "crypto/random.h"
 #include "common/ieee802_11_defs.h"
+#include "common/ieee802_11_common.h"
 #include "eapol_supp/eapol_supp_sm.h"
 #include "wpa.h"
 #include "eloop.h"
@@ -3220,6 +3221,118 @@ struct wpabuf * fils_build_auth(struct wpa_sm *sm)
 			buf);
 
 	return buf;
+}
+
+
+int fils_process_auth(struct wpa_sm *sm, const u8 *data, size_t len)
+{
+	const u8 *pos, *end, *rsn;
+	struct ieee802_11_elems elems;
+
+	wpa_hexdump(MSG_DEBUG, "FILS: Authentication frame fields",
+		    data, len);
+	pos = data;
+	end = data + len;
+
+	/* RSNE */
+	if (pos + 2 > end || pos[0] != WLAN_EID_RSN || pos + 2 + pos[1] > end) {
+		wpa_printf(MSG_DEBUG, "FILS: No RSN element");
+		return -1;
+	}
+	rsn = pos;
+	pos += 2 + pos[1];
+	wpa_hexdump(MSG_DEBUG, "FILS: RSN element", rsn, 2 + rsn[1]);
+
+	/* TODO: MDE when using FILS+FT */
+	/* TODO: FTE when using FILS+FT */
+
+	/* TODO: Finite Cyclic Group when using PK or PFS */
+	/* TODO: Element when using PK or PFS */
+
+	/* FILS Authentication Type */
+	if (pos >= end) {
+		wpa_printf(MSG_DEBUG,
+			   "FILS: No FILS Authentication Type field");
+		return -1;
+	}
+	wpa_printf(MSG_DEBUG, "FILS: FILS Authentication Type: %u", pos[0]);
+	if (pos[0] != FILS_AUTH_SHARED_KEY) {
+		wpa_printf(MSG_DEBUG,
+			   "FILS: Unsupported FILS Authentication Type: %u",
+			   pos[0]);
+		return -1;
+	}
+	pos++;
+
+	if (pos + FILS_NONCE_LEN > end) {
+		wpa_printf(MSG_DEBUG, "FILS: No FILS Nonce field");
+		return -1;
+	}
+	os_memcpy(sm->fils_anonce, pos, FILS_NONCE_LEN);
+	wpa_hexdump(MSG_DEBUG, "FILS: ANonce", sm->fils_anonce, FILS_NONCE_LEN);
+	pos += FILS_NONCE_LEN;
+
+	wpa_hexdump(MSG_DEBUG, "FILS: Remaining IEs", pos, end - pos);
+	if (ieee802_11_parse_elems(pos, end - pos, &elems, 1) == ParseFailed) {
+		wpa_printf(MSG_DEBUG, "FILS: Could not parse elements");
+		return -1;
+	}
+
+	/* PMKID List */
+	if (sm->cur_pmksa && elems.pmkid_list && elems.pmkid_list_len > 0) {
+		const u8 *pmkid;
+
+		wpa_hexdump(MSG_DEBUG, "FILS: PMKID List",
+			    elems.pmkid_list, elems.pmkid_list_len);
+
+		pmkid = elems.pmkid_list;
+		if (pmkid[0] != 1 || elems.pmkid_list_len - 1 < PMKID_LEN) {
+			wpa_printf(MSG_DEBUG, "FILS: Invalid PMKID selection");
+			return -1;
+		}
+		pmkid++;
+		wpa_hexdump(MSG_DEBUG, "FILS: PMKID", pmkid, PMKID_LEN);
+		if (os_memcmp(sm->cur_pmksa->pmkid, pmkid, PMKID_LEN) != 0) {
+			wpa_printf(MSG_DEBUG, "FILS: PMKID mismatch");
+			wpa_hexdump(MSG_DEBUG, "FILS: Expected PMKID",
+				    sm->cur_pmksa->pmkid, PMKID_LEN);
+			return -1;
+		}
+		wpa_printf(MSG_DEBUG,
+			   "FILS: Matching PMKID - continue using PMKSA caching");
+	}
+
+	/* FILS Session */
+	if (!elems.fils_session) {
+		wpa_printf(MSG_DEBUG, "FILS: No FILS Session element");
+		return -1;
+	}
+	wpa_hexdump(MSG_DEBUG, "FILS: FILS Session", elems.fils_session,
+		    FILS_SESSION_LEN);
+	if (os_memcmp(sm->fils_session, elems.fils_session, FILS_SESSION_LEN)
+	    != 0) {
+		wpa_printf(MSG_DEBUG, "FILS: Session mismatch");
+		wpa_hexdump(MSG_DEBUG, "FILS: Expected FILS Session",
+			    sm->fils_session, FILS_SESSION_LEN);
+		return -1;
+	}
+
+	/* FILS Wrapped Data */
+	if (!sm->cur_pmksa && elems.fils_wrapped_data) {
+		wpa_hexdump(MSG_DEBUG, "FILS: Wrapped Data",
+			    elems.fils_wrapped_data,
+			    elems.fils_wrapped_data_len);
+		/* TODO: ERP processing */
+		return -1;
+	}
+
+	if (!sm->cur_pmksa) {
+		wpa_printf(MSG_DEBUG,
+			   "FILS: No remaining options to continue FILS authentication");
+		return -1;
+	}
+
+	return 0;
 }
 
 #endif /* CONFIG_FILS */
