@@ -2029,6 +2029,15 @@ int fils_auth_pmk_to_ptk(struct wpa_state_machine *sm, const u8 *pmk,
 	if (res < 0)
 		return res;
 	sm->PTK_valid = TRUE;
+
+	if (fils_key_auth_sk(sm->PTK.kck, sm->PTK.kck_len, snonce, anonce,
+			     sm->addr, sm->wpa_auth->addr,
+			     NULL, 0, NULL, 0, /* TODO: SK+PFS */
+			     sm->wpa_key_mgmt, sm->fils_key_auth_sta,
+			     sm->fils_key_auth_ap,
+			     &sm->fils_key_auth_len) < 0)
+		return -1;
+
 	return 0;
 }
 
