@@ -420,5 +420,6 @@ int wpa_wnmsleep_install_key(struct wpa_sm *sm, u8 subelem_id, u8 *buf);
 
 struct wpabuf * fils_build_auth(struct wpa_sm *sm);
 int fils_process_auth(struct wpa_sm *sm, const u8 *data, size_t len);
+struct wpabuf * fils_build_assoc_req(struct wpa_sm *sm);
 
 #endif /* WPA_H */

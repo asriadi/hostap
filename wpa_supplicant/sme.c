@@ -945,6 +945,31 @@ void sme_associate(struct wpa_supplicant *wpa_s, enum wpas_mode mode,
 	struct ieee80211_vht_capabilities vhtcaps_mask;
 #endif /* CONFIG_VHT_OVERRIDES */
 
+#ifdef CONFIG_FILS
+	if (auth_type == WLAN_AUTH_FILS) {
+		struct wpabuf *buf;
+
+		/* TODO: Note: Needs full AssocReq payload as sent by driver
+		 * for AES-GCM AAD.. */
+
+		buf = fils_build_assoc_req(wpa_s->wpa);
+		if (!buf)
+			return;
+		/* TODO: Make wpa_s->sme.assoc_req_ie use dynamic allocation */
+		if (wpa_s->sme.assoc_req_ie_len + wpabuf_len(buf) >
+		    sizeof(wpa_s->sme.assoc_req_ie)) {
+			wpa_printf(MSG_ERROR,
+				   "FILS: Not enough buffer room for own AssocReq elements");
+			wpabuf_free(buf);
+			return;
+		}
+		os_memcpy(wpa_s->sme.assoc_req_ie + wpa_s->sme.assoc_req_ie_len,
+			  wpabuf_head(buf), wpabuf_len(buf));
+		wpa_s->sme.assoc_req_ie_len += wpabuf_len(buf);
+		wpabuf_free(buf);
+	}
+#endif /* CONFIG_FILS */
+
 	os_memset(&params, 0, sizeof(params));
 	params.bssid = bssid;
 	params.ssid = wpa_s->sme.ssid;

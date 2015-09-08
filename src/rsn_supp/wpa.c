@@ -3353,4 +3353,82 @@ int fils_process_auth(struct wpa_sm *sm, const u8 *data, size_t len)
 	return 0;
 }
 
+
+struct wpabuf * fils_build_assoc_req(struct wpa_sm *sm)
+{
+	struct wpabuf *buf, *plain;
+	u8 nonce[12];
+	u8 *crypt, *tag;
+	size_t aad_len;
+
+	buf = wpabuf_alloc(1000);
+	plain = wpabuf_alloc(1000);
+	if (!buf || !plain) {
+		wpabuf_free(buf);
+		wpabuf_free(plain);
+		return NULL;
+	}
+
+	/* FILS Session */
+	wpabuf_put_u8(buf, WLAN_EID_EXTENSION); /* Element ID */
+	wpabuf_put_u8(buf, 1 + FILS_SESSION_LEN); /* Length */
+	/* Element ID Extension */
+	wpabuf_put_u8(buf, WLAN_EID_EXT_FILS_SESSION);
+	wpabuf_put_data(buf, sm->fils_session, FILS_SESSION_LEN);
+
+	/* Everything after FILS Session element gets encrypted */
+
+	/* TODO: FILS Public Key */
+
+	/* FILS Key Confirm */
+	wpabuf_put_u8(plain, WLAN_EID_EXTENSION); /* Element ID */
+	wpabuf_put_u8(plain, 1 + sm->fils_key_auth_len); /* Length */
+	/* Element ID Extension */
+	wpabuf_put_u8(plain, WLAN_EID_EXT_FILS_KEY_CONFIRM);
+	wpabuf_put_data(plain, sm->fils_key_auth_sta, sm->fils_key_auth_len);
+
+	/* TODO: FILS HLP Container */
+
+	/* TODO: FILS IP Address Assignment */
+
+	/*
+	 * FIX: For temporary testing purposes, calculate AAD only over
+	 * the FILS Session element. The real implementation needs to
+	 * calculate this from the beginning of the Capability
+	 * Information field to the end of the FILS Session element.
+	 */
+
+	wpa_hexdump_buf(MSG_DEBUG, "FILS: Association Request plaintext",
+			plain);
+
+	os_memset(nonce, 0, 4);
+	WPA_PUT_BE64(&nonce[4], sm->ptk.sta_aead_counter);
+	wpa_hexdump(MSG_DEBUG, "FILS: AES-GCM nonce", nonce, sizeof(nonce));
+	sm->ptk.sta_aead_counter++;
+
+	aad_len = wpabuf_len(buf);
+	crypt = wpabuf_put(buf, wpabuf_len(plain));
+	tag = wpabuf_put(buf, AES_BLOCK_SIZE);
+
+	if (aes_gcm_ae(sm->ptk.kek, sm->ptk.kek_len, nonce, sizeof(nonce),
+		       wpabuf_head(plain), wpabuf_len(plain),
+		       wpabuf_head(buf), aad_len, /* FIX: full AAD */
+		       crypt, tag) < 0) {
+		wpabuf_free(buf);
+		wpabuf_free(plain);
+		return NULL;
+	}
+
+	wpa_hexdump_key(MSG_DEBUG, "FILS: Encrypted Key Data",
+			crypt, wpabuf_len(plain));
+	wpa_hexdump(MSG_DEBUG, "FILS: Derived AES-GCM Tag",
+		    tag, AES_BLOCK_SIZE);
+
+	wpabuf_free(plain);
+
+	wpa_hexdump_buf(MSG_DEBUG, "FILS: Association Request elements", buf);
+
+	return buf;
+}
+
 #endif /* CONFIG_FILS */
