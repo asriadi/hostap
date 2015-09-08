@@ -3342,6 +3342,14 @@ int fils_process_auth(struct wpa_sm *sm, const u8 *data, size_t len)
 	sm->tptk_set = 0;
 	os_memset(&sm->tptk, 0, sizeof(sm->tptk));
 
+	if (fils_key_auth_sk(sm->ptk.kck, sm->ptk.kck_len, sm->fils_nonce,
+			     sm->fils_anonce, sm->own_addr, sm->bssid,
+			     NULL, 0, NULL, 0, /* TODO: SK+PFS */
+			     sm->key_mgmt, sm->fils_key_auth_sta,
+			     sm->fils_key_auth_ap,
+			     &sm->fils_key_auth_len) < 0)
+		return -1;
+
 	return 0;
 }
 
