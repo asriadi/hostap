@@ -330,5 +330,8 @@ void wpa_auth_reconfig_group_keys(struct wpa_authenticator *wpa_auth);
 
 int fils_auth_pmk_to_ptk(struct wpa_state_machine *sm, const u8 *pmk,
 			 size_t pmk_len, const u8 *snonce, const u8 *anonce);
+int fils_decrypt_assoc(struct wpa_state_machine *sm,
+		       const struct ieee80211_mgmt *mgmt, size_t frame_len,
+		       u8 *pos, size_t left);
 
 #endif /* WPA_AUTH_H */
