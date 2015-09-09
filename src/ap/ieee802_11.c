@@ -2863,6 +2863,13 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 	hapd->new_assoc_sta_cb(hapd, sta, !new_assoc);
 
 	ieee802_1x_notify_port_enabled(sta->eapol_sm, 1);
+
+	if (sta->auth_alg == WLAN_AUTH_FILS && fils_set_tk(sta->wpa_sm) < 0) {
+		wpa_printf(MSG_DEBUG, "FILS: TK configuration failed");
+		ap_sta_disconnect(hapd, sta, sta->addr,
+				  WLAN_REASON_UNSPECIFIED);
+		return;
+	}
 }
 
 
