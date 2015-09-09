@@ -3163,17 +3163,31 @@ void wpa_sm_set_ptk_kck_kek(struct wpa_sm *sm,
 struct wpabuf * fils_build_auth(struct wpa_sm *sm)
 {
 	struct wpabuf *buf;
+	struct wpabuf *erp_msg;
+
+	erp_msg = eapol_sm_build_erp_reauth_start(sm->eapol);
+	if (!erp_msg && !sm->cur_pmksa) {
+		wpa_printf(MSG_DEBUG,
+			   "FILS: Neither ERP EAP-Initiate/Re-auth nor PMKSA cache entry is available - skip FILS");
+		return NULL;
+	}
+
+	wpa_printf(MSG_DEBUG, "FILS: Try to use FILS (erp=%d pmksa_cache=%d)",
+		   erp_msg != NULL, sm->cur_pmksa != NULL);
 
 	sm->fils_completed = 0;
 
 	if (!sm->assoc_wpa_ie) {
 		wpa_printf(MSG_INFO, "RSN: No own RSN IE set for FILS");
+		wpabuf_free(erp_msg);
 		return NULL;
 	}
 
 	if (random_get_bytes(sm->fils_nonce, FILS_NONCE_LEN) ||
-	    random_get_bytes(sm->fils_session, FILS_SESSION_LEN))
+	    random_get_bytes(sm->fils_session, FILS_SESSION_LEN)) {
+		wpabuf_free(erp_msg);
 		return NULL;
+	}
 
 	wpa_hexdump(MSG_DEBUG, "RSN: Generated FILS Nonce",
 		    sm->fils_nonce, FILS_NONCE_LEN);
@@ -3181,8 +3195,10 @@ struct wpabuf * fils_build_auth(struct wpa_sm *sm)
 		    sm->fils_session, FILS_SESSION_LEN);
 
 	buf = wpabuf_alloc(1000 + sm->assoc_wpa_ie_len);
-	if (!buf)
+	if (!buf) {
+		wpabuf_free(erp_msg);
 		return NULL;
+	}
 
 	/* Fields following the Authentication algorithm number field */
 
@@ -3230,7 +3246,15 @@ struct wpabuf * fils_build_auth(struct wpa_sm *sm)
 	wpabuf_put_u8(buf, WLAN_EID_EXT_FILS_SESSION);
 	wpabuf_put_data(buf, sm->fils_session, FILS_SESSION_LEN);
 
-	/* TODO: FILS Wrapped Data (if ERP info available) */
+	/* FILS Wrapped Data */
+	if (erp_msg) {
+		wpabuf_put_u8(buf, WLAN_EID_EXTENSION); /* Element ID */
+		wpabuf_put_u8(buf, 1 + wpabuf_len(erp_msg)); /* Length */
+		/* Element ID Extension */
+		wpabuf_put_u8(buf, WLAN_EID_EXT_FILS_WRAPPED_DATA);
+		wpabuf_put_buf(buf, erp_msg);
+		wpabuf_free(erp_msg);
+	}
 
 	wpa_hexdump_buf(MSG_DEBUG, "RSN: FILS fields for Authentication frame",
 			buf);
