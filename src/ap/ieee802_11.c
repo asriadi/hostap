@@ -2780,6 +2780,7 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 	sta->flags |= WLAN_STA_ASSOC;
 	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
 	if ((!hapd->conf->ieee802_1x && !hapd->conf->wpa && !hapd->conf->osen) ||
+	    sta->auth_alg == WLAN_AUTH_FILS ||
 	    sta->auth_alg == WLAN_AUTH_FT) {
 		/*
 		 * Open, static WEP, or FT protocol; no separate authorization
