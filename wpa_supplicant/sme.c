@@ -527,6 +527,7 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 		params.auth_alg = WPA_AUTH_ALG_FILS;
 		params.sae_data = wpabuf_head(resp);
 		params.sae_data_len = wpabuf_len(resp);
+		wpa_s->sme.auth_alg = WPA_AUTH_ALG_FILS;
 	}
 #endif /* CONFIG_FILS */
 
