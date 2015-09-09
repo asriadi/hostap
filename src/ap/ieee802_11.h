@@ -105,5 +105,9 @@ static inline void sae_clear_retransmit_timer(struct hostapd_data *hapd,
 #endif /* CONFIG_SAE */
 
 u8 * hostapd_eid_fils_indic(struct hostapd_data *hapd, u8 *eid);
+void ieee802_11_finish_fils_auth(struct hostapd_data *hapd,
+				 struct sta_info *sta, int success,
+				 struct wpabuf *erp_resp,
+				 const u8 *msk, size_t msk_len);
 
 #endif /* IEEE802_11_H */

@@ -901,15 +901,19 @@ static u16 wpa_res_to_status_code(int res)
 
 
 #ifdef CONFIG_FILS
+
+static void handle_auth_fils_finish(struct hostapd_data *hapd,
+				    struct sta_info *sta, u16 resp,
+				    struct rsn_pmksa_cache_entry *pmksa,
+				    struct wpabuf *erp_resp,
+				    const u8 *msk, size_t msk_len);
+
 static void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 			    const struct ieee80211_mgmt *mgmt, size_t len,
 			    u16 auth_transaction, u16 status_code)
 {
 	u16 resp = WLAN_STATUS_SUCCESS;
-	struct wpabuf *data = NULL;
-	const u8 *pos, *end, *rsn, *snonce, *ie;
-	size_t ielen;
-	u8 fils_nonce[FILS_NONCE_LEN];
+	const u8 *pos, *end, *rsn, *snonce;
 	struct ieee802_11_elems elems;
 	int res;
 	struct rsn_pmksa_cache_entry *pmksa = NULL;
@@ -979,6 +983,7 @@ static void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 	snonce = pos;
 	wpa_hexdump(MSG_DEBUG, "FILS: SNonce", snonce, FILS_NONCE_LEN);
+	os_memcpy(sta->fils_snonce, snonce, FILS_NONCE_LEN);
 	pos += FILS_NONCE_LEN;
 
 	wpa_hexdump(MSG_DEBUG, "FILS: Remaining IEs", pos, end - pos);
@@ -1019,10 +1024,8 @@ static void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 			   wpa_auth_sta_key_mgmt(sta->wpa_sm), pmksa->akmp);
 		pmksa = NULL;
 	}
-	if (pmksa) {
+	if (pmksa)
 		wpa_printf(MSG_DEBUG, "FILS: Found matching PMKSA cache entry");
-		/* TODO */
-	}
 
 	/* FILS Session */
 	if (!elems.fils_session) {
@@ -1032,14 +1035,55 @@ static void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 	wpa_hexdump(MSG_DEBUG, "FILS: FILS Session", elems.fils_session,
 		    FILS_SESSION_LEN);
+	os_memcpy(sta->fils_session, elems.fils_session, FILS_SESSION_LEN);
 
 	/* FILS Wrapped Data */
 	if (elems.fils_wrapped_data) {
 		wpa_hexdump(MSG_DEBUG, "FILS: Wrapped Data",
 			    elems.fils_wrapped_data,
 			    elems.fils_wrapped_data_len);
-		/* TODO: ERP processing */
+		if (!pmksa) {
+#ifndef CONFIG_NO_RADIUS
+			if (!sta->eapol_sm) {
+				sta->eapol_sm =
+					ieee802_1x_alloc_eapol_sm(hapd, sta);
+			}
+			wpa_printf(MSG_DEBUG,
+				   "FILS: Forward EAP-Identity/Re-auth Start to authentication server");
+			ieee802_1x_encapsulate_radius(
+				hapd, sta, elems.fils_wrapped_data,
+				elems.fils_wrapped_data_len);
+			wpa_printf(MSG_DEBUG,
+				   "FILS: Will send Authentication frame once the response from authentication server is available");
+			sta->flags |= WLAN_STA_PENDING_FILS_ERP;
+			return;
+#else /* CONFIG_NO_RADIUS */
+			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			goto fail;
+#endif /* CONFIG_NO_RADIUS */
+		}
 	}
+
+fail:
+	handle_auth_fils_finish(hapd, sta, resp, pmksa, NULL, NULL, 0);
+}
+
+
+static void handle_auth_fils_finish(struct hostapd_data *hapd,
+				    struct sta_info *sta, u16 resp,
+				    struct rsn_pmksa_cache_entry *pmksa,
+				    struct wpabuf *erp_resp,
+				    const u8 *msk, size_t msk_len)
+{
+	u8 fils_nonce[FILS_NONCE_LEN];
+	size_t ielen;
+	struct wpabuf *data = NULL;
+	const u8 *ie;
+	const u8 *pmk = NULL;
+	size_t pmk_len = 0;
+
+	if (resp != WLAN_STATUS_SUCCESS)
+		goto fail;
 
 	ie = wpa_auth_get_wpa_ie(hapd->wpa_auth, &ielen);
 	if (!ie || random_get_bytes(fils_nonce, FILS_NONCE_LEN)) {
@@ -1080,6 +1124,8 @@ static void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 		wpabuf_put_u8(data, WLAN_EID_EXT_PMKID_LIST);
 		wpabuf_put_u8(data, 1); /* PMKID Count */
 		wpabuf_put_data(data, pmksa->pmkid, PMKID_LEN);
+		pmk = pmksa->pmk;
+		pmk_len = pmksa->pmk_len;
 	}
 
 	/* FILS Session */
@@ -1087,12 +1133,30 @@ static void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 	wpabuf_put_u8(data, 1 + FILS_SESSION_LEN); /* Length */
 	/* Element ID Extension */
 	wpabuf_put_u8(data, WLAN_EID_EXT_FILS_SESSION);
-	wpabuf_put_data(data, elems.fils_session, FILS_SESSION_LEN);
+	wpabuf_put_data(data, sta->fils_session, FILS_SESSION_LEN);
 
-	/* TODO: FILS Wrapped Data (if ERP info available) */
+	/* FILS Wrapped Data */
+	if (!pmksa && erp_resp) {
+		wpabuf_put_u8(data, WLAN_EID_EXTENSION); /* Element ID */
+		wpabuf_put_u8(data, 1 + wpabuf_len(erp_resp)); /* Length */
+		/* Element ID Extension */
+		wpabuf_put_u8(data, WLAN_EID_EXT_FILS_WRAPPED_DATA);
+		wpabuf_put_buf(data, erp_resp);
 
-	if (fils_auth_pmk_to_ptk(sta->wpa_sm, pmksa->pmk, pmksa->pmk_len,
-				 snonce, fils_nonce) < 0) {
+		pmk = msk;
+		pmk_len = msk_len > PMK_LEN ? PMK_LEN : msk_len;
+	}
+
+	if (!pmk) {
+		wpa_printf(MSG_DEBUG, "FILS: No PMK available");
+		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		wpabuf_free(data);
+		data = NULL;
+		goto fail;
+	}
+
+	if (fils_auth_pmk_to_ptk(sta->wpa_sm, pmk, pmk_len,
+				 sta->fils_snonce, fils_nonce) < 0) {
 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		wpabuf_free(data);
 		data = NULL;
@@ -1100,7 +1164,8 @@ static void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 
 fail:
-	send_auth_reply(hapd, mgmt->sa, mgmt->bssid, WLAN_AUTH_FILS, 2, resp,
+	send_auth_reply(hapd, sta->addr, hapd->own_addr, WLAN_AUTH_FILS, 2,
+			resp,
 			data ? wpabuf_head(data) : (u8 *) "",
 			data ? wpabuf_len(data) : 0);
 	wpabuf_free(data);
@@ -1115,6 +1180,19 @@ fail:
 		mlme_authenticate_indication(hapd, sta);
 	}
 }
+
+
+void ieee802_11_finish_fils_auth(struct hostapd_data *hapd,
+				 struct sta_info *sta, int success,
+				 struct wpabuf *erp_resp,
+				 const u8 *msk, size_t msk_len)
+{
+	sta->flags &= ~WLAN_STA_PENDING_FILS_ERP;
+	handle_auth_fils_finish(hapd, sta, success ? WLAN_STATUS_SUCCESS :
+				WLAN_STATUS_UNSPECIFIED_FAILURE, NULL,
+				erp_resp, msk, msk_len);
+}
+
 #endif /* CONFIG_FILS */
 
 static void handle_auth(struct hostapd_data *hapd,
@@ -1301,6 +1379,7 @@ static void handle_auth(struct hostapd_data *hapd,
 
 	sta = ap_get_sta(hapd, mgmt->sa);
 	if (sta) {
+		sta->flags &= ~WLAN_STA_PENDING_FILS_ERP;
 		if ((fc & WLAN_FC_RETRY) &&
 		    sta->last_seq_ctrl != WLAN_INVALID_MGMT_SEQ &&
 		    sta->last_seq_ctrl == seq_ctrl &&

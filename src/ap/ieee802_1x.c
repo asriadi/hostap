@@ -31,6 +31,8 @@
 #include "ap_drv_ops.h"
 #include "wps_hostapd.h"
 #include "hs20.h"
+/* FIX: Not really a good thing to require ieee802_11.h here.. */
+#include "ieee802_11.h"
 #include "ieee802_1x.h"
 
 
@@ -313,6 +315,7 @@ static void ieee802_1x_learn_identity(struct hostapd_data *hapd,
 	     hdr->code != EAP_CODE_INITIATE))
 		return;
 
+	eap_erp_update_identity(sm->eap, eap, len);
 	identity = eap_get_identity(sm->eap, &identity_len);
 	if (identity == NULL)
 		return;
@@ -560,9 +563,9 @@ int add_common_radius_attr(struct hostapd_data *hapd,
 }
 
 
-static void ieee802_1x_encapsulate_radius(struct hostapd_data *hapd,
-					  struct sta_info *sta,
-					  const u8 *eap, size_t len)
+void ieee802_1x_encapsulate_radius(struct hostapd_data *hapd,
+				   struct sta_info *sta,
+				   const u8 *eap, size_t len)
 {
 	struct radius_msg *msg;
 	struct eapol_state_machine *sm = sta->eapol_sm;
@@ -814,7 +817,7 @@ static void handle_eap(struct hostapd_data *hapd, struct sta_info *sta,
 }
 
 
-static struct eapol_state_machine *
+struct eapol_state_machine *
 ieee802_1x_alloc_eapol_sm(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	int flags = 0;
@@ -1753,6 +1756,19 @@ ieee802_1x_receive_auth(struct radius_msg *msg, struct radius_msg *req,
 	ieee802_1x_decapsulate_radius(hapd, sta);
 	if (override_eapReq)
 		sm->eap_if->aaaEapReq = FALSE;
+
+#ifdef CONFIG_FILS
+#ifdef NEED_AP_MLME
+	if (sta->flags & WLAN_STA_PENDING_FILS_ERP) {
+		/* TODO: Add a PMKSA entry on success? */
+		ieee802_11_finish_fils_auth(
+			hapd, sta, hdr->code == RADIUS_CODE_ACCESS_ACCEPT,
+			sm->eap_if->aaaEapReqData,
+			sm->eap_if->aaaEapKeyData,
+			sm->eap_if->aaaEapKeyDataLen);
+	}
+#endif /* NEED_AP_MLME */
+#endif /* CONFIG_FILS */
 
 	eapol_auth_step(sm);
 
