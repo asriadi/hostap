@@ -1999,6 +1999,29 @@ static void send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 
 	send_len += p - reply->u.assoc_resp.variable;
 
+#ifdef CONFIG_FILS
+	if (sta->auth_alg == WLAN_AUTH_FILS &&
+	    status_code == WLAN_STATUS_SUCCESS) {
+		struct ieee802_11_elems elems;
+
+		if (ieee802_11_parse_elems(ies, ies_len, &elems, 0) ==
+		    ParseFailed || !elems.fils_session)
+			return;
+
+		/* FILS Session */
+		*p++ = WLAN_EID_EXTENSION; /* Element ID */
+		*p++ = 1 + FILS_SESSION_LEN; /* Length */
+		*p++ = WLAN_EID_EXT_FILS_SESSION; /* Element ID Extension */
+		os_memcpy(p, elems.fils_session, FILS_SESSION_LEN);
+		send_len += 2 + 1 + FILS_SESSION_LEN;
+
+		send_len = fils_encrypt_assoc(sta->wpa_sm, buf, send_len,
+					      sizeof(buf));
+		if (send_len < 0)
+			return;
+	}
+#endif /* CONFIG_FILS */
+
 	if (hostapd_drv_send_mlme(hapd, reply, send_len, 0) < 0)
 		wpa_printf(MSG_INFO, "Failed to send assoc resp: %s",
 			   strerror(errno));

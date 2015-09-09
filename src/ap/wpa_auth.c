@@ -56,6 +56,7 @@ static void wpa_group_get(struct wpa_authenticator *wpa_auth,
 			  struct wpa_group *group);
 static void wpa_group_put(struct wpa_authenticator *wpa_auth,
 			  struct wpa_group *group);
+static u8 * ieee80211w_kde_add(struct wpa_state_machine *sm, u8 *pos);
 
 static const u32 dot11RSNAConfigGroupUpdateCount = 4;
 static const u32 dot11RSNAConfigPairwiseUpdateCount = 4;
@@ -2229,6 +2230,128 @@ int fils_decrypt_assoc(struct wpa_state_machine *sm,
 	}
 
 	return left - AES_BLOCK_SIZE;
+}
+
+
+int fils_encrypt_assoc(struct wpa_state_machine *sm, u8 *buf,
+		       size_t current_len, size_t max_len)
+{
+	u8 *end = buf + max_len;
+	u8 *pos = buf + current_len;
+	u8 *aad_start, *aad_end;
+	struct ieee80211_mgmt *mgmt;
+	u8 nonce[12];
+	struct wpabuf *plain;
+	u8 *len, *tmp, *tmp2;
+	u8 hdr[2];
+	u8 *gtk, dummy_gtk[32];
+	size_t gtk_len;
+	struct wpa_group *gsm;
+
+	if (!sm || !sm->PTK_valid)
+		return -1;
+
+	wpa_hexdump(MSG_DEBUG,
+		    "FILS: Association Response frame before FILS processing",
+		    buf, current_len);
+
+	/*
+	 * AAD starts from the Capability Info field which is at the same offset
+	 * in both Association Response and Reassociation Response frame.
+	 */
+	mgmt = (struct ieee80211_mgmt *) buf;
+	aad_start = (u8 *) &mgmt->u.assoc_resp.capab_info;
+	aad_end = pos; /* AAD ends at the end of the FILS Session element */
+
+	/* The following elements will be encrypted with AES-GCM */
+
+	plain = wpabuf_alloc(1000);
+	if (!plain)
+		return -1;
+
+	/* TODO: FILS Public Key */
+
+	/* FILS Key Confirmation */
+	wpabuf_put_u8(plain, WLAN_EID_EXTENSION); /* Element ID */
+	wpabuf_put_u8(plain, 1 + sm->fils_key_auth_len); /* Length */
+	/* Element ID Extension */
+	wpabuf_put_u8(plain, WLAN_EID_EXT_FILS_KEY_CONFIRM);
+	wpabuf_put_data(plain, sm->fils_key_auth_ap, sm->fils_key_auth_len);
+
+	/* TODO: FILS HLP Container */
+
+	/* TODO: FILS IP Address Assignment */
+
+	/* Key Delivery */
+	gsm = sm->group;
+	wpabuf_put_u8(plain, WLAN_EID_EXTENSION); /* Element ID */
+	len = wpabuf_put(plain, 1);
+	wpabuf_put_u8(plain, WLAN_EID_EXT_KEY_DELIVERY);
+	wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN,
+			    wpabuf_put(plain, WPA_KEY_RSC_LEN));
+	/* GTK KDE */
+	gtk = gsm->GTK[gsm->GN - 1];
+	gtk_len = gsm->GTK_len;
+	if (sm->wpa_auth->conf.disable_gtk) {
+		/*
+		 * Provide unique random GTK to each STA to prevent use
+		 * of GTK in the BSS.
+		 */
+		if (random_get_bytes(dummy_gtk, gtk_len) < 0) {
+			wpabuf_free(plain);
+			return -1;
+		}
+		gtk = dummy_gtk;
+	}
+	hdr[0] = gsm->GN & 0x03;
+	hdr[1] = 0;
+	tmp = wpabuf_put(plain, 0);
+	tmp2 = wpa_add_kde(tmp, RSN_KEY_DATA_GROUPKEY, hdr, 2,
+			   gtk, gtk_len);
+	wpabuf_put(plain, tmp2 - tmp);
+
+	/* IGTK KDE */
+	tmp = wpabuf_put(plain, 0);
+	tmp2 = ieee80211w_kde_add(sm, tmp);
+	wpabuf_put(plain, tmp2 - tmp);
+
+	*len = (u8 *) wpabuf_put(plain, 0) - len - 1;
+
+	if (pos + wpabuf_len(plain) + AES_BLOCK_SIZE > end) {
+		wpa_printf(MSG_DEBUG,
+			   "FILS: Not enough room for FILS elements");
+		wpabuf_free(plain);
+		return -1;
+	}
+
+	wpa_hexdump_buf_key(MSG_DEBUG, "FILS: Association Response plaintext",
+			    plain);
+
+	nonce[0] = 0x01; /* AP */
+	nonce[1] = 0x00;
+	nonce[2] = 0x00;
+	nonce[3] = 0x00;
+	WPA_PUT_BE64(&nonce[4], sm->PTK.ap_aead_counter);
+	wpa_hexdump(MSG_DEBUG, "FILS: AES-GCM nonce", nonce, sizeof(nonce));
+	sm->PTK.ap_aead_counter++;
+
+	if (aes_gcm_ae(sm->PTK.kek, sm->PTK.kek_len, nonce, sizeof(nonce),
+		       wpabuf_head(plain), wpabuf_len(plain),
+		       aad_start, aad_end - aad_start,
+		       pos, pos + wpabuf_len(plain)) < 0) {
+		wpabuf_free(plain);
+		return -1;
+	}
+
+	wpa_hexdump_key(MSG_DEBUG,
+			"FILS: Encrypted Association Response elements",
+			pos, wpabuf_len(plain));
+	wpa_hexdump(MSG_DEBUG, "FILS: Derived AES-GCM Tag",
+		    pos + wpabuf_len(plain), AES_BLOCK_SIZE);
+	current_len += wpabuf_len(plain) + AES_BLOCK_SIZE;
+	wpabuf_free(plain);
+
+	return current_len;
 }
 
 #endif /* CONFIG_FILS */
