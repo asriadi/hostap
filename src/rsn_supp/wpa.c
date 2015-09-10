@@ -3365,11 +3365,25 @@ int fils_process_auth(struct wpa_sm *sm, const u8 *data, size_t len)
 
 	/* FILS Wrapped Data */
 	if (!sm->cur_pmksa && elems.fils_wrapped_data) {
+		int res;
+
 		wpa_hexdump(MSG_DEBUG, "FILS: Wrapped Data",
 			    elems.fils_wrapped_data,
 			    elems.fils_wrapped_data_len);
-		/* TODO: ERP processing */
-		return -1;
+		eapol_sm_process_erp_finish(sm->eapol, elems.fils_wrapped_data,
+					    elems.fils_wrapped_data_len);
+		if (eapol_sm_failed(sm->eapol))
+			return -1;
+
+		res = eapol_sm_get_key(sm->eapol, sm->pmk, PMK_LEN);
+		if (res)
+			return -1;
+
+		wpa_printf(MSG_DEBUG, "FILS: ERP processing succeeded - add PMKSA cache entry for the result");
+		sm->cur_pmksa = pmksa_cache_add(sm->pmksa, sm->pmk, PMK_LEN,
+						NULL, 0, sm->bssid,
+						sm->own_addr,
+						sm->network_ctx, sm->key_mgmt);
 	}
 
 	if (!sm->cur_pmksa) {
