@@ -3267,6 +3267,7 @@ int fils_process_auth(struct wpa_sm *sm, const u8 *data, size_t len)
 {
 	const u8 *pos, *end, *rsn;
 	struct ieee802_11_elems elems;
+	int pmkid_match = 0;
 
 	wpa_hexdump(MSG_DEBUG, "FILS: Authentication frame fields",
 		    data, len);
@@ -3339,6 +3340,12 @@ int fils_process_auth(struct wpa_sm *sm, const u8 *data, size_t len)
 		}
 		wpa_printf(MSG_DEBUG,
 			   "FILS: Matching PMKID - continue using PMKSA caching");
+		pmkid_match = 1;
+	}
+	if (!pmkid_match && sm->cur_pmksa) {
+		wpa_printf(MSG_DEBUG,
+			   "FILS: No PMKID match - cannot use cached PMKSA entry");
+		sm->cur_pmksa = NULL;
 	}
 
 	/* FILS Session */
